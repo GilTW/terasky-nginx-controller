@@ -1,0 +1,9 @@
+CONFIG_SERVER_PORT = "8888"
+DATA_BUCKET = "ts-nginx-controller-data"
+STATE_FILE = "nxc.state"
+CONFIG_VERSIONS_BUCKET_FOLDER = "nginx_server_config_files"
+RUNNING_VERSIONS_BUCKET_FOLDER = "nginx_server_running_versions"
+CONFIG_FILE_NAME_PATTERN = "nginx_{version}.conf"
+GROUP_RUNNING_VERSION_FILE_NAME_PATTERN = "{group}_running_version.txt"
+PUBLISH_TIMEOUT_SECONDS = 30
+GRPC_PORT = 5555

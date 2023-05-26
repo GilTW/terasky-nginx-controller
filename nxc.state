@@ -1,0 +1,11 @@
+{
+  "current_version": null,
+  "available_versions": [
+  ],
+  "listen_ports": [],
+  "server_groups": {
+    "group_a": {
+      "nginx_servers_count": 1
+    }
+  }
+}
