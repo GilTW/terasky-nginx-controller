@@ -1,8 +1,8 @@
 import json
-import sys
 import anyio
 import utils.config as config
 import nginxparser_eb as nginx_parser
+from datetime import datetime
 from utils.grpc_server import GRPCServer
 from aws_utils import s3_helper
 from alive_progress import alive_bar
@@ -21,13 +21,17 @@ class NginxController:
             state_json = json.loads(state_file_content)
             self.current_version = state_json["current_version"]
             self.available_versions = set(state_json["available_versions"])
-            self.listen_ports = set(state_json["listen_ports"])
+            self.exposed_ports = set(state_json["exposed_ports"])
             self.server_groups = state_json["server_groups"]
         else:
             self.current_version = None
             self.available_versions = set()
-            self.listen_ports = set()
+            self.exposed_ports = set()
             self.server_groups = {}
+
+    async def list_available_config_versions(self):
+        for _version in self.available_versions:
+            print(_version)
 
     async def create_config_version(self, file_path, version):
         is_overwrite = False
@@ -50,8 +54,9 @@ class NginxController:
             for block in nginx_conf:
                 if "'http'" in str(block):
                     block[1].append(self.__create_config_version_server_block(version))
+                    break
         else:
-            nginx_conf.append(self.__create_config_version_server_block(version, include_http=True))
+            nginx_conf.append(self.__create_config_version_server_block(version))
 
         # noinspection PyTypeChecker
         nginx_conf_modified_str = nginx_parser.dumps(nginx_conf)
@@ -66,12 +71,15 @@ class NginxController:
 
         return nginx_conf
 
-    async def publish_config(self, version, nginx_conf=None, group_gradual=False):
+    async def publish_config(self, version, nginx_conf=None, group_gradual=False, force_publish=False):
         if version not in self.available_versions:
             raise AbortOperationException(f"Version '{version}' is not available for publishing!")
 
         if not self.server_groups:
             raise AbortOperationException("There are no Nginx server groups configured!")
+
+        if version == self.current_version and not force_publish:
+            raise AbortOperationException(f"Running version is already '{version}'!")
 
         if not nginx_conf:
             nginx_conf_bucket_key = f"{config.CONFIG_VERSIONS_BUCKET_FOLDER}/{config.CONFIG_FILE_NAME_PATTERN.format(version=version)}"
@@ -82,28 +90,29 @@ class NginxController:
             else:
                 raise AbortOperationException(f"No Nginx configuration file for version '{version}' has been found!")
 
-        listen_ports = self.__find_listen_ports(nginx_conf)
+        exposed_ports = self.__find_exposed_ports(nginx_conf)
         publishing_instructions = {
             "version": version,
-            "exposed_ports": list(listen_ports)
+            "exposed_ports": list(exposed_ports),
+            "timestamp": datetime.now().timestamp()
         }
 
-        if listen_ports != self.listen_ports and self.current_version is not None:
+        if exposed_ports != self.exposed_ports and self.current_version is not None:
             if input("Publishing this version will require a restart, would you like to continue? y/n").lower() != "y":
                 raise AbortOperationException()
             else:
                 publishing_instructions["restart_required"] = True
 
         await self.__start_publish(publishing_instructions, group_gradual)
-
-    # async def get_available_config_versions(self):
-    #     await anyio.sleep(1)
+        self.current_version = version
+        self.exposed_ports = exposed_ports
+        await self.__update_state()
 
     async def __update_state(self):
         state_data = {
             "current_version": self.current_version,
             "available_versions": list(self.available_versions),
-            "listen_ports": list(self.listen_ports),
+            "exposed_ports": list(self.exposed_ports),
             "server_groups": self.server_groups
         }
 
@@ -146,11 +155,11 @@ class NginxController:
                 await receive_stream.aclose()
 
     @staticmethod
-    def __find_listen_ports(nginx_conf):
-        listen_ports = set()
+    def __find_exposed_ports(nginx_conf):
+        exposed_ports = set()
 
         def recursive_search(nginx_conf_blocks):
-            nonlocal listen_ports
+            nonlocal exposed_ports
 
             for block in nginx_conf_blocks:
                 block_str = str(block)
@@ -159,34 +168,31 @@ class NginxController:
                         address_and_port_split = block[1].split(":")
 
                         if address_and_port_split[-1].isdigit() and address_and_port_split[-1] != config.CONFIG_SERVER_PORT:
-                            listen_ports.add(address_and_port_split[-1])
+                            exposed_ports.add(address_and_port_split[-1])
                     else:
                         recursive_search(block)
 
         recursive_search(nginx_conf)
 
-        if len(listen_ports) == 0:
-            listen_ports.add("80")
+        if len(exposed_ports) == 0:
+            exposed_ports.add("80")
 
-        return listen_ports
+        return exposed_ports
 
     @staticmethod
-    def __create_config_version_server_block(version, include_http=False):
+    def __create_config_version_server_block(version):
         server_block = [
-            ['server'],
+            ['\n\t    ', 'server', ' '],
             [
-                ['listen', config.CONFIG_SERVER_PORT],
+                ['\n\t\t    ', 'listen', ' ', config.CONFIG_SERVER_PORT],
                 [
-                    ['location', '/'],
+                    ['\n\n\t\t\t\t   ', 'location', ' ', '/', ' '],
                     [
-                        ['return', f'200 {version}']
+                        ['\n\t\t\t\t\t       ', 'return', ' ', f'200 "{version}"']
                     ]
                 ]
             ]
         ]
-
-        if include_http:
-            server_block = [["http"], server_block]
 
         return server_block
 
@@ -226,7 +232,8 @@ class NginxController:
                         server_group_view["servers_done_count"] += 1
 
                         if server_group_view["servers_done_count"] == server_group_view["servers_count"]:
-                            total_servers_bar.text(f"{server_group} Finished Publishing")
+                            total_servers_bar.text(f"{server_group} Completed Version Publishing!")
+                            self.publish_state_view[server_group]["status"] = "COMPLETED"
 
                     if responses_received == self.total_nginx_servers:
                         break

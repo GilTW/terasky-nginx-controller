@@ -24,7 +24,7 @@ async def create_nginx_conf_version(file_path, version, publish=False):
         nginx_conf = await nginx_controller.create_config_version(file_path, version)
 
         if publish:
-            await nginx_controller.publish_config(version, nginx_conf=nginx_conf)
+            await nginx_controller.publish_config(version, nginx_conf=nginx_conf, force_publish=True)
     except AbortOperationException as abort_ex:
         print(abort_ex)
     except Exception as ex:
@@ -41,10 +41,10 @@ async def publish_nginx_conf(version):
     except Exception as ex:
         print(f"An error has occurred: {ex}")
 
-#
-# @cli.command()
-# async def list_nginx_conf_versions():
-#     await nginx_controller.get_available_config_versions()
+
+@cli.command()
+async def list_nginx_conf_versions():
+    await nginx_controller.list_available_config_versions()
 
 
 #
