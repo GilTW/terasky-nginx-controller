@@ -33,9 +33,14 @@ async def create_nginx_conf_version(file_path, version, publish=False):
 
 @cli.command()
 @click.argument("version")
-async def publish_nginx_conf(version):
+@click.option("--force_publish", is_flag=True, help="Boolean. Flag for forcing version publishing")
+async def publish_nginx_conf(version, force_publish=False):
+    """
+    Publishes a Nginx configuration version
+    :param version: String. Version of Nginx configuration to publish
+    """
     try:
-        await nginx_controller.publish_config(version)
+        await nginx_controller.publish_config(version, force_publish=force_publish)
     except AbortOperationException as abort_ex:
         print(abort_ex)
     except Exception as ex:
@@ -44,6 +49,9 @@ async def publish_nginx_conf(version):
 
 @cli.command()
 async def list_nginx_conf_versions():
+    """
+    Lists all available versions for Nginx Controller to publish.
+    """
     await nginx_controller.list_available_config_versions()
 
 
