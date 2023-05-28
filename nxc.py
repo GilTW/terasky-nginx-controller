@@ -13,7 +13,8 @@ async def cli():
 @click.argument("file_path")
 @click.argument("version")
 @click.option("--publish", is_flag=True, help="Boolean. Flag for publishing the version to running nginx server")
-async def create_nginx_conf_version(file_path, version, publish=False):
+@click.option("--group-gradual", is_flag=True, help="Boolean. Flag for gradually deploying changes in groups")
+async def create_nginx_conf_version(file_path, version, publish=False, group_gradual=False):
     """
     Creates a new version of nginx configuration file and publishes the config if instructed (see options).
 
@@ -24,7 +25,7 @@ async def create_nginx_conf_version(file_path, version, publish=False):
         nginx_conf = await nginx_controller.create_config_version(file_path, version)
 
         if publish:
-            await nginx_controller.publish_config(version, nginx_conf=nginx_conf, force_publish=True)
+            await nginx_controller.publish_config(version, nginx_conf=nginx_conf, group_gradual=group_gradual, force_publish=True)
     except AbortOperationException as abort_ex:
         print(abort_ex)
     except Exception as ex:
@@ -33,14 +34,15 @@ async def create_nginx_conf_version(file_path, version, publish=False):
 
 @cli.command()
 @click.argument("version")
-@click.option("--force_publish", is_flag=True, help="Boolean. Flag for forcing version publishing")
-async def publish_nginx_conf(version, force_publish=False):
+@click.option("--force-publish", is_flag=True, help="Boolean. Flag for forcing version publishing")
+@click.option("--group-gradual", is_flag=True, help="Boolean. Flag for gradually deploying changes in groups")
+async def publish_nginx_conf(version, force_publish=False, group_gradual=False):
     """
     Publishes a Nginx configuration version
     :param version: String. Version of Nginx configuration to publish
     """
     try:
-        await nginx_controller.publish_config(version, force_publish=force_publish)
+        await nginx_controller.publish_config(version, group_gradual=group_gradual, force_publish=force_publish)
     except AbortOperationException as abort_ex:
         print(abort_ex)
     except Exception as ex:
@@ -55,6 +57,13 @@ async def list_nginx_conf_versions():
     await nginx_controller.list_available_config_versions()
 
 
+@cli.command()
+@click.argument("group_name")
+@click.argument("nginx_servers_count")
+async def add_group(group_name, nginx_servers_count):
+    await nginx_controller.add_group(group_name, int(nginx_servers_count))
+
+
 #
 # @cli.command()
 # async def configure():
@@ -62,7 +71,7 @@ async def list_nginx_conf_versions():
 
 #
 # @cli.command()
-# async def add_hose():
+# async def add_host():
 #     Ideally we would run the agent via ssh in a remote machine
 
 

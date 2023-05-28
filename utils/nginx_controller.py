@@ -29,6 +29,10 @@ class NginxController:
             self.exposed_ports = set()
             self.server_groups = {}
 
+    async def add_group(self, group_name, nginx_servers_count):
+        self.server_groups[group_name] = {"nginx_servers_count": nginx_servers_count}
+        await self.__update_state()
+
     async def list_available_config_versions(self):
         for _version in self.available_versions:
             print(_version)
@@ -218,6 +222,7 @@ class NginxController:
         async def run(self):
             await self.listen_to_agent_start_event.set()
             responses_received = 0
+            print("")
 
             with alive_bar(self.total_nginx_servers, title="Total Servers", force_tty=True) as total_servers_bar:
                 async for message in self.receive_stream:
@@ -232,12 +237,14 @@ class NginxController:
                         server_group_view["servers_done_count"] += 1
 
                         if server_group_view["servers_done_count"] == server_group_view["servers_count"]:
-                            total_servers_bar.text(f"{server_group} Completed Version Publishing!")
+                            print(f"{server_group} Completed Version Publishing!")
                             self.publish_state_view[server_group]["status"] = "COMPLETED"
+                            await self.publish_state_view[server_group]["done_event"].set()
 
                     if responses_received == self.total_nginx_servers:
                         break
 
+            print("")
             await self.publish_done_event.set()
 
         async def publish_group(self, server_group, publishing_instructions):
