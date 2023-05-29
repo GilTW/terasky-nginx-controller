@@ -12,9 +12,10 @@ async def cli():
 @cli.command()
 @click.argument("file_path")
 @click.argument("version")
+@click.option("--overwrite", is_flag=True, help="Boolean. Flag for overwriting without prompt")
 @click.option("--publish", is_flag=True, help="Boolean. Flag for publishing the version to running nginx server")
 @click.option("--group-gradual", is_flag=True, help="Boolean. Flag for gradually deploying changes in groups")
-async def create_nginx_conf_version(file_path, version, publish=False, group_gradual=False):
+async def create_nginx_conf_version(file_path, version, publish=False, group_gradual=False, overwrite=False):
     """
     Creates a new version of nginx configuration file and publishes the config if instructed (see options).
 
@@ -22,7 +23,7 @@ async def create_nginx_conf_version(file_path, version, publish=False, group_gra
     :param version: String. Version of the nginx config
     """
     try:
-        nginx_conf = await nginx_controller.create_config_version(file_path, version)
+        nginx_conf = await nginx_controller.create_config_version(file_path, version, ask_overwrite=(not overwrite))
 
         if publish:
             await nginx_controller.publish_config(version, nginx_conf=nginx_conf, group_gradual=group_gradual, force_publish=True)

@@ -37,12 +37,15 @@ class NginxController:
         for _version in self.available_versions:
             print(_version)
 
-    async def create_config_version(self, file_path, version):
+    async def create_config_version(self, file_path, version, ask_overwrite):
         is_overwrite = False
 
         if version in self.available_versions:
-            print(f"Version '{version}' already exists, do you want to overwrite it? y/n")
-            is_overwrite = input("> ").lower() == "y"
+            if not ask_overwrite:
+                is_overwrite = True
+            else:
+                print(f"Version '{version}' already exists, do you want to overwrite it? y/n")
+                is_overwrite = input("> ").lower() == "y"
 
             if not is_overwrite:
                 raise AbortOperationException("User aborted operation.")
@@ -102,7 +105,9 @@ class NginxController:
         }
 
         if exposed_ports != self.exposed_ports and self.current_version is not None:
-            if input("Publishing this version will require a restart, would you like to continue? y/n").lower() != "y":
+            print("Publishing this version will require a restart, would you like to continue? y/n")
+
+            if input("> ").lower() != "y":
                 raise AbortOperationException()
             else:
                 publishing_instructions["restart_required"] = True
@@ -124,7 +129,7 @@ class NginxController:
 
     async def __start_publish(self, publishing_instructions, group_gradual):
         version = publishing_instructions['version']
-        send_stream, receive_stream = anyio.create_memory_object_stream()
+        send_stream, receive_stream = anyio.create_memory_object_stream(1000)
         grpc_server = GRPCServer(send_stream)
         publish_state_controller = NginxController.PublishStateController(self.server_groups, receive_stream)
         print(f"Publishing version '{version}' to {publish_state_controller.total_nginx_servers} Nginx servers across "
@@ -228,7 +233,7 @@ class NginxController:
                 async for message in self.receive_stream:
                     message_json = json.loads(message)
                     server_group = message_json["server_group"]
-                    container_publish_result = message_json["container_publish_result"]
+                    container_publish_result = message_json["containers_publish_result"]
                     responses_received += 1
 
                     if container_publish_result == "Success":
